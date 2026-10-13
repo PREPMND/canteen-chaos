@@ -260,14 +260,23 @@ delegate(catTabs, '.cat-tab', 'click', (e, node) => {
 
 /* ------------------------------------------------ search + suggest */
 
+// Search is typed, not clicked: wait for a pause before asking the server,
+// and ignore fragments too short to mean anything. Clearing the box is
+// always honoured, so the full menu comes back.
+const SEARCH_MIN_CHARS = 2;
+const SEARCH_DELAY_MS = 800;
+
 const runSearch = debounce(() => {
-  state.filters.q = searchInput.value.trim();
+  const q = searchInput.value.trim();
+  if (q.length > 0 && q.length < SEARCH_MIN_CHARS) return;
+
+  state.filters.q = q;
   loadMenu();
-}, 300);
+}, SEARCH_DELAY_MS);
 
 const runSuggest = debounce(async () => {
   const q = searchInput.value.trim();
-  if (q.length < 2) return hideSuggestions();
+  if (q.length < SEARCH_MIN_CHARS) return hideSuggestions();
 
   try {
     const { suggestions } = await api.suggest(q);
@@ -289,7 +298,7 @@ const runSuggest = debounce(async () => {
   } catch (e) {
     hideSuggestions();
   }
-}, 180);
+}, SEARCH_DELAY_MS);
 
 function hideSuggestions() {
   show(suggestBox, false);
@@ -297,7 +306,21 @@ function hideSuggestions() {
   suggestIndex = -1;
 }
 
+function showSearching() {
+  render(suggestBox, html`<div class="suggest-item suggest-note" role="status">
+      <span>Searching&hellip;</span>
+    </div>`);
+  suggestIndex = -1;
+  show(suggestBox, true);
+}
+
 searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+
+  // immediate feedback, because the request itself is now a beat behind
+  if (q.length >= SEARCH_MIN_CHARS) showSearching();
+  else hideSuggestions();
+
   runSearch();
   runSuggest();
 });
